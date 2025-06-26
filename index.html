@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>インタラクティブ漫画：江戸転生ウイルス</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutral (amber, stone, orange) -->
+    <!-- Application Structure Plan: Interactive comic viewer structure. A main panel display area is updated via "Next/Prev" buttons and a persistent sidebar for non-linear panel selection. This narrative-centric design is best for consuming a story, while the sidebar and dynamic info cards add the required interactivity and exploration layers beyond a simple linear read-through. -->
+    <!-- Visualization & Content Choices: The manga script is structured as sequential panels. The primary presentation method is a panel viewer that dynamically generates an image via an API call and displays dialogue. Goal: Story Consumption. Method: JS-driven updates to a central content area. Interaction: Sequential navigation (buttons), direct access navigation (sidebar), and contextual information pop-ups (character cards). This approach directly translates the source's narrative format into a truly interactive visual experience. Library: Vanilla JS. CONFIRMED: NO SVG/Mermaid. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+        }
+        .flash-effect {
+            animation: flash 0.5s ease-out;
+        }
+        @keyframes flash {
+            0% { background-color: white; opacity: 1; }
+            50% { background-color: white; opacity: 1; }
+            100% { background-color: transparent; opacity: 1; }
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #fb923c;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-amber-50 text-stone-800">
+
+    <div id="app" class="flex flex-col md:flex-row min-h-screen">
+        
+        <aside class="w-full md:w-64 lg:w-72 bg-white/80 backdrop-blur-sm border-r border-stone-200 p-4 md:p-6 flex-shrink-0">
+            <h2 class="text-xl font-bold text-stone-900 mb-1">パネル一覧</h2>
+            <p class="text-xs text-stone-500 mb-4">クリックして好きな場面にジャンプできます。</p>
+            <div id="panel-navigator" class="space-y-2 max-h-[calc(100vh-120px)] overflow-y-auto pr-2">
+            </div>
+        </aside>
+
+        <main class="flex-1 p-4 md:p-8 lg:p-12 flex flex-col items-center">
+            <div class="w-full max-w-4xl">
+                <header class="text-center mb-8">
+                    <h1 class="text-2xl md:text-4xl font-bold text-stone-900">現代で下火のカス感染症やったワイ、防疫技術がゴミ以下の江戸時代で人類を死滅させるンゴ</h1>
+                    <p class="mt-2 text-stone-600">これは、一匹のウイルスが江戸時代に転生し、自らの存在意義を問う物語である。パネルやナビゲーションを操作して、物語を読み進めよう。</p>
+                </header>
+
+                <div id="main-viewer" class="w-full bg-white rounded-2xl shadow-lg p-4 md:p-6 ring-1 ring-stone-200 relative">
+                    <div id="panel-content" class="transition-opacity duration-300">
+                        <div id="panel-image-container" class="w-full h-64 sm:h-80 md:h-96 lg:h-[500px] rounded-lg mb-4 flex items-center justify-center bg-stone-100 border border-stone-200">
+                            <!-- Image will be generated here -->
+                        </div>
+                        <div id="panel-dialogue" class="bg-stone-100 rounded-lg p-4 text-lg md:text-xl leading-relaxed whitespace-pre-wrap text-center min-h-[100px]">
+                        </div>
+                    </div>
+                     <div id="character-card" class="hidden absolute bottom-6 right-6 bg-orange-100 border border-orange-300 text-orange-900 rounded-lg p-4 shadow-md w-64 transition-all duration-300">
+                        <h3 id="char-name" class="font-bold text-lg"></h3>
+                        <p id="char-desc" class="text-sm"></p>
+                    </div>
+                </div>
+
+                <footer class="mt-6 flex justify-between items-center">
+                    <button id="prev-btn" class="bg-white hover:bg-orange-100 text-stone-800 font-bold py-2 px-4 rounded-lg shadow ring-1 ring-stone-200 transition-colors">＜ 前のパネル</button>
+                    <div class="text-sm text-stone-500">
+                        <span id="page-indicator"></span> / 
+                        <span id="panel-indicator"></span>
+                    </div>
+                    <button id="next-btn" class="bg-orange-200 hover:bg-orange-300 text-orange-900 font-bold py-2 px-4 rounded-lg shadow transition-colors">次のパネル ＞</button>
+                </footer>
+            </div>
+        </main>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const storyData = [
+                { page: 1, panel: 1, dialogue: "〜2025年 東京〜\nゴロゴロゴロゴロ…", image_prompt: "A lonely, cartoonish coronavirus particle with a sad face, rolling down a deserted street in a futuristic Tokyo. Manga art style, black and white with screentones, melancholic atmosphere.", character: null },
+                { page: 1, panel: 2, dialogue: "ワイ「ああ〜2019年はあんなにブレイクしたのに、ワクチンとか人類ムカつくンゴねえ〜」", image_prompt: "Close-up of a cartoon coronavirus character with an angry and frustrated expression. Dynamic manga style with exaggerated features.", character: null },
+                { page: 1, panel: 3, dialogue: "老人「ゴホッ、ゴホッ…」", image_prompt: "The back view of an elderly man coughing, hunched over on a city street. Simple manga panel style.", character: null },
+                { page: 1, panel: 4, dialogue: "ワイ「(キラーン！) あ、基礎疾患持ちのジジイやんけ！いっちょ殺（や）ったろ！ピューッ」", image_prompt: "A cartoon coronavirus with an evil glint in its eye, launching itself towards an old man. Dynamic manga style with speed lines to show fast movement.", character: null },
+                { page: 2, panel: 1, dialogue: "「その時であった。」\nゴロゴロ…ピカッ！！！", image_prompt: "A massive, dramatic lightning bolt striking a small cartoon coronavirus from a dark, stormy sky. Full-page splash, intense manga style with high contrast and action effects.", character: null },
+                { page: 2, panel: 2, dialogue: "ワイ（ナレーション）「ワイは死んだ…はずやった！」", image_prompt: "A confused cartoon coronavirus particle looking up at a bustling Edo-period Japanese town with wooden buildings and people in kimonos. First-person perspective manga style.", character: null },
+                { page: 3, panel: 1, dialogue: "ワイ「うひょー！なんやこの不衛生な環境！最高やんけ！」", image_prompt: "A cartoon coronavirus with a joyful, ecstatic expression, looking at a dirty, muddy street in an Edo-period town. Manga style.", character: null },
+                { page: 3, panel: 2, dialogue: "ワイ「(邪悪な笑み) 江戸カス、楽勝すぎるンゴｗｗｗ」", image_prompt: "A cartoon coronavirus with an evil, gleeful grin, floating above a crowded, messy Edo-period market. High-angle shot, manga style.", character: null },
+                { page: 4, panel: 1, dialogue: "辰五郎「へいらっしゃい！今日の魚は活きがいいぜ！」", image_prompt: "An energetic young fishmonger with a headband, 'Tatsugoro,' cheerfully selling fish at a busy market stall in Edo-period Japan. Classic shonen manga style.", character: { name: '辰五郎', desc: '威勢のいい魚屋の若者。本作の最初の宿主（スーパースプレッダー候補）。' } },
+                { page: 4, panel: 2, dialogue: "ワイ「今や！いただき！」", image_prompt: "A cartoon coronavirus flying straight into the wide-open, yawning mouth of an Edo-period man. Dynamic manga action shot with motion blur and focus lines.", character: null },
+                { page: 4, panel: 3, dialogue: "辰五郎「さあ、どんどん持ってきな！」\nワイ（ナレーション）「これから始まるで…人類滅亡のカウントダウンがな…！」", image_prompt: "Split panel manga page: On one side, an energetic Edo-period man smiling. On the other side, inside his body, a sinister cartoon coronavirus is laughing evilly.", character: null },
+            ];
+            
+            const imageCache = {};
+            let currentPanelIndex = 0;
+            let isGenerating = false;
+
+            const panelNavigator = document.getElementById('panel-navigator');
+            const panelImageContainer = document.getElementById('panel-image-container');
+            const panelDialogue = document.getElementById('panel-dialogue');
+            const pageIndicator = document.getElementById('page-indicator');
+            const panelIndicator = document.getElementById('panel-indicator');
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const mainViewer = document.getElementById('main-viewer');
+            const panelContent = document.getElementById('panel-content');
+            const characterCard = document.getElementById('character-card');
+            const charName = document.getElementById('char-name');
+            const charDesc = document.getElementById('char-desc');
+
+            function showLoader() {
+                panelImageContainer.innerHTML = '<div class="loader"></div>';
+            }
+
+            async function generateImage(prompt, index) {
+                if (isGenerating) return;
+                isGenerating = true;
+                showLoader();
+                
+                try {
+                    const payload = { instances: [{ prompt: prompt }], parameters: { "sampleCount": 1 } };
+                    const apiKey = "";
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+                    
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                       throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    
+                    const result = await response.json();
+
+                    if (result.predictions && result.predictions.length > 0 && result.predictions[0].bytesBase64Encoded) {
+                        const imageUrl = `data:image/png;base64,${result.predictions[0].bytesBase64Encoded}`;
+                        imageCache[index] = imageUrl;
+                        if (index === currentPanelIndex) {
+                           displayImage(imageUrl);
+                        }
+                    } else {
+                        throw new Error("Invalid response structure from API");
+                    }
+                } catch (error) {
+                    console.error('Image generation failed:', error);
+                    if (index === currentPanelIndex) {
+                        panelImageContainer.innerHTML = `<p class="text-red-500 p-4">画像の生成に失敗しました。再読み込みしてお試しください。</p>`;
+                    }
+                } finally {
+                    isGenerating = false;
+                }
+            }
+            
+            function displayImage(imageUrl) {
+                 panelImageContainer.innerHTML = '';
+                 const img = document.createElement('img');
+                 img.src = imageUrl;
+                 img.alt = "生成された漫画パネル";
+                 img.className = 'w-full h-full object-contain';
+                 panelImageContainer.appendChild(img);
+            }
+
+            function renderNavigator() {
+                panelNavigator.innerHTML = '';
+                let currentPage = 0;
+                storyData.forEach((panel, index) => {
+                    if(panel.page !== currentPage) {
+                        currentPage = panel.page;
+                        const pageHeader = document.createElement('h3');
+                        pageHeader.className = 'font-bold text-sm text-stone-700 pt-2';
+                        pageHeader.textContent = `ページ ${currentPage}`;
+                        panelNavigator.appendChild(pageHeader);
+                    }
+                    const navItem = document.createElement('a');
+                    navItem.href = '#';
+                    navItem.textContent = `コマ ${panel.panel}: ${panel.dialogue.split('\n')[0].substring(0, 15)}...`;
+                    navItem.className = 'block text-sm p-2 rounded-md hover:bg-orange-100 transition-colors';
+                    navItem.dataset.index = index;
+                    if (index === currentPanelIndex) {
+                        navItem.classList.add('bg-orange-200', 'font-bold');
+                    }
+                    navItem.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        if (isGenerating) return;
+                        currentPanelIndex = index;
+                        renderPanel();
+                    });
+                    panelNavigator.appendChild(navItem);
+                });
+            }
+
+            async function renderPanel() {
+                panelContent.style.opacity = 0;
+                
+                setTimeout(async () => {
+                    const panel = storyData[currentPanelIndex];
+                    panelDialogue.textContent = panel.dialogue;
+                    pageIndicator.textContent = `P.${panel.page}`;
+                    panelIndicator.textContent = `コマ ${panel.panel}`;
+
+                    if (imageCache[currentPanelIndex]) {
+                        displayImage(imageCache[currentPanelIndex]);
+                    } else {
+                        await generateImage(panel.image_prompt, currentPanelIndex);
+                    }
+
+                    if (panel.character) {
+                        charName.textContent = panel.character.name;
+                        charDesc.textContent = panel.character.desc;
+                        characterCard.classList.remove('hidden');
+                    } else {
+                        characterCard.classList.add('hidden');
+                    }
+
+                    if (panel.dialogue.includes('ピカッ！！！')) {
+                        mainViewer.classList.add('flash-effect');
+                        setTimeout(() => mainViewer.classList.remove('flash-effect'), 500);
+                    }
+                    
+                    panelContent.style.opacity = 1;
+                    updateNavButtons();
+                    renderNavigator();
+                }, 300);
+            }
+
+            function updateNavButtons() {
+                const disabled = isGenerating;
+                prevBtn.disabled = currentPanelIndex === 0 || disabled;
+                prevBtn.classList.toggle('opacity-50', prevBtn.disabled);
+                prevBtn.classList.toggle('cursor-not-allowed', prevBtn.disabled);
+
+                nextBtn.disabled = currentPanelIndex === storyData.length - 1 || disabled;
+                nextBtn.classList.toggle('opacity-50', nextBtn.disabled);
+                nextBtn.classList.toggle('cursor-not-allowed', nextBtn.disabled);
+
+                if (currentPanelIndex === storyData.length - 1) {
+                    nextBtn.textContent = '第一話 完';
+                } else {
+                    nextBtn.textContent = '次のパネル ＞';
+                }
+            }
+
+            prevBtn.addEventListener('click', () => {
+                if (currentPanelIndex > 0) {
+                    currentPanelIndex--;
+                    renderPanel();
+                }
+            });
+
+            nextBtn.addEventListener('click', () => {
+                if (currentPanelIndex < storyData.length - 1) {
+                    currentPanelIndex++;
+                    renderPanel();
+                }
+            });
+
+            renderPanel();
+        });
+    </script>
+</body>
+</html>
